@@ -1,0 +1,389 @@
+directories:
+  src:
+    main.ts: |
+      import { Plugin, Vault } from "obsidian";
+      import { updateIndex, IndexSettings } from "./indexLibrary"; // Import your library functions
+      import { IndexPluginSettingTab } from "./settingsTab";
+
+      const DEFAULT_SETTINGS: IndexSettings = {
+        indexFileName: "Index.md",
+        previousIndexFileName: null,
+        ignoredPatterns: "^\\.syncthing,\\(conflicted copy\\)",
+      };
+
+      export default class IndexPlugin extends Plugin {
+        settings: IndexSettings;
+
+        async onload() {
+          console.log("Loading Index Plugin");
+
+          // Load settings
+          await this.loadSettings();
+
+          // Add settings tab
+          this.addSettingTab(new IndexPluginSettingTab(this.app, this));
+
+          // Register Vault event listeners
+          this.registerEventListeners();
+        }
+
+        async handleSettingsChange(
+          newIndexFileName: string,
+          vault: Vault
+        ): Promise<void> {
+          const previousIndexFileName = this.settings.indexFileName;
+
+          // Update the index file name in settings
+          this.settings.indexFileName = newIndexFileName;
+          await this.saveSettings();
+
+          // Update the indices for all affected folders
+          const rootPath = vault.getRoot().path;
+          await updateIndex(vault, rootPath, this.settings, previousIndexFileName);
+        }
+
+        onunload() {
+          console.log("Unloading Index Plugin");
+        }
+
+        async loadSettings() {
+          this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+        }
+
+        async saveSettings() {
+          await this.saveData(this.settings);
+        }
+
+        registerEventListeners() {
+          const vault = this.app.vault;
+
+          // File created
+          vault.on("create", (file) => {
+            console.log(`File created: ${file.path}`);
+            this.handleFileChange(file.path);
+          });
+
+          // File deleted
+          vault.on("delete", (file) => {
+            console.log(`File deleted: ${file.path}`);
+            this.handleFileChange(file.parent?.path ?? "");
+          });
+
+          // File renamed
+          vault.on("rename", (file, oldPath) => {
+            const vault = this.app.vault;
+
+            // Check if the new path exists using Obsidian's API
+            const newFile = vault.getAbstractFileByPath(file.path);
+            const parentFile = vault.getAbstractFileByPath(file.parent?.path ?? "");
+
+            if (!newFile || !parentFile) {
+              console.log(
+                `Skipped: Path does not exist (newPath: ${file.path}, parentPath: ${file.parent?.path})`
+              );
+              return;
+            }
+
+            console.log(`Folder renamed from ${oldPath} to ${file.path}`);
+
+            setTimeout(() => {
+              // Update the renamed folder's index
+              this.handleFileChange(file.path);
+              // Update the parent directory's index to reflect the rename
+              this.handleFileChange(file.parent?.path ?? "");
+            }, 100);
+          });
+        }
+
+        handleFileChange(folderPath: string) {
+          if (!folderPath) return;
+
+          const indexSettings: IndexSettings = {
+            ...this.settings,
+          };
+
+          updateIndex(this.app.vault, folderPath, indexSettings);
+        }
+      }
+
+    settingsTab.ts: | 
+      import { App, PluginSettingTab, Setting } from "obsidian";
+      import IndexPlugin from "./main";
+
+      export class IndexPluginSettingTab extends PluginSettingTab {
+        plugin: IndexPlugin;
+
+        constructor(app: App, plugin: IndexPlugin) {
+          super(app, plugin);
+          this.plugin = plugin;
+        }
+
+        display(): void {
+          const { containerEl } = this;
+          const { indexFileName } = this.plugin.settings;
+
+          containerEl.empty();
+          containerEl.createEl("h2", { text: "Index Plugin Settings" });
+
+          // Index File Name Setting
+          new Setting(containerEl)
+            .setName("Index File Name")
+            .setDesc("The name of the index file to generate in each folder.")
+            .addText((text) =>
+              text
+                .setPlaceholder("Enter index file name")
+                .setValue(this.plugin.settings.indexFileName)
+                .onChange(async (value) => {
+                  const newIndexFileName = value.trim() || indexFileName;
+                  const vault = this.plugin.app.vault;
+                  await this.plugin.handleSettingsChange(newIndexFileName, vault);
+                })
+            );
+
+          // Ignored Patterns Setting
+          new Setting(containerEl)
+            .setName("Ignored Patterns")
+            .setDesc(
+              "Comma-separated list of regex patterns to ignore files/folders."
+            )
+            .addTextArea((textArea) =>
+              textArea
+                .setPlaceholder("e.g., ^\\.syncthing,\\(conflicted copy\\)")
+                .setValue(this.plugin.settings.ignoredPatterns)
+                .onChange(async (value) => {
+                  this.plugin.settings.ignoredPatterns = value;
+                  await this.plugin.saveSettings();
+                })
+            );
+        }
+      }
+    indexLibrary.ts: |
+      import { TFolder, Vault, normalizePath } from "obsidian";
+
+      export const syncthingIgnorePatterns: RegExp[] = [
+        /^\.syncthing/, // Ignore temp files like .syncthing.filename.tmp
+        /\(conflicted copy\)/, // Ignore conflict files
+      ];
+
+      export interface IndexSettings {
+        indexFileName: string; // Current index file name
+        previousIndexFileName: string | null; // Cached previous index file name
+        ignoredPatterns: string; // Comma-separated list of regex patterns
+      }
+
+      /**
+      * Converts a string to a human-readable name by capitalizing words
+      * and replacing underscores/dashes with spaces.
+      * @param str The input string
+      * @returns The human-readable string
+      */
+      export function toHumanName(str: string): string {
+        return str.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      }
+
+      /**
+      * Updates the index file in the specified folder based on the given settings.
+      * @param vault The Obsidian Vault API instance
+      * @param folderPath The path to the folder for which to generate the index
+      * @param settings The settings object containing the index file name and ignored patterns
+      * @param previousIndexFileName Optional parameter to delete the outdated index file
+      */
+      export async function updateIndex(
+        vault: Vault,
+        folderPath: string,
+        settings: IndexSettings,
+        previousIndexFileName?: string
+      ): Promise<void> {
+        try {
+          const normalizedFolderPath = normalizePath(folderPath);
+          const { ignoredPatterns, indexFileName } = settings;
+
+          // Get the folder object
+          const folder = vault.getAbstractFileByPath(normalizedFolderPath) as TFolder;
+          if (!(folder instanceof TFolder)) {
+            console.log(`Skipped updating index: Not a valid folder (${folderPath})`);
+            return;
+          }
+
+          // Remove outdated index file
+          if (previousIndexFileName && previousIndexFileName !== indexFileName) {
+            const oldIndexFilePath = normalizePath(
+              `${normalizedFolderPath}/${previousIndexFileName}`
+            );
+            if (await vault.adapter.exists(oldIndexFilePath)) {
+              console.log(`Removing outdated index file: ${oldIndexFilePath}`);
+              await vault.adapter.remove(oldIndexFilePath);
+            }
+          }
+
+          // Create the new index file
+          const indexFilePath = normalizePath(
+            `${normalizedFolderPath}/${settings.indexFileName}`
+          );
+          const parentPath = folder.parent?.path || "";
+          const relativeParentLink = normalizePath(
+            `${parentPath}/${settings.indexFileName}`
+          );
+
+          let content = `# ${toHumanName(
+            folder.name
+          )} [[${relativeParentLink}|Back to ${toHumanName(
+            folder.parent?.name || "Root"
+          )}]]\n\n`;
+
+          const links = folder.children
+            .filter(
+              (child) =>
+                child.name !== settings.indexFileName &&
+                !settings.ignoredPatterns
+                  .split(",")
+                  .some((pattern) => new RegExp(pattern).test(child.name))
+            )
+            .map((child) => {
+              const displayName = toHumanName(child.name.replace(/\.[^/.]+$/, ""));
+              return child instanceof TFolder
+                ? `- [[${child.path}/${settings.indexFileName}|${displayName}]]`
+                : `- [[${child.path}|${displayName}]]`;
+            });
+
+          content += links.join("\n") + "\n";
+
+          // Write the new index file
+          await vault.adapter.write(indexFilePath, content);
+          console.log(`Updated index at ${indexFilePath}`);
+        } catch (error) {
+          console.error(`Failed to update index for ${folderPath}:`, error);
+        }
+      }
+
+    esbuild.config.mjs: |          # ESBuild configuration
+      import esbuild from "esbuild";
+      import process from "process";
+      import builtins from "builtin-modules";
+
+      const banner =
+      `/*
+      THIS IS A GENERATED/BUNDLED FILE BY ESBUILD
+      if you want to view the source, please visit the github repository of this plugin
+      */
+      `;
+
+      const prod = (process.argv[2] === "production");
+
+      const context = await esbuild.context({
+        banner: {
+          js: banner,
+        },
+        entryPoints: ["src/main.ts"],
+        bundle: true,
+        external: [
+          "obsidian",
+          "electron",
+          "@codemirror/autocomplete",
+          "@codemirror/collab",
+          "@codemirror/commands",
+          "@codemirror/language",
+          "@codemirror/lint",
+          "@codemirror/search",
+          "@codemirror/state",
+          "@codemirror/view",
+          "@lezer/common",
+          "@lezer/highlight",
+          "@lezer/lr",
+          ...builtins],
+        format: "cjs",
+        target: "es2018",
+        logLevel: "info",
+        sourcemap: prod ? false : "inline",
+        treeShaking: true,
+        outfile: "main.js",
+        minify: prod,
+      });
+
+      if (prod) {
+        await context.rebuild();
+        process.exit(0);
+      } else {
+        await context.watch();
+      }
+    package.json: |                # Package configuration
+      {
+        "name": "obsidian-index-plugin",
+        "version": "1.0.0",
+        "description": "Automatically generates and updates index files for folders in Obsidian.",
+        "main": "main.js",
+        "scripts": {
+          "dev": "node esbuild.config.mjs",
+          "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+          "version": "node version-bump.mjs && git add manifest.json versions.json"
+        },
+        "keywords": ["obsidian-plugin", "index", "automation"],
+        "author": "Your Name",
+        "license": "MIT",
+        "devDependencies": {
+          "@types/node": "^16.11.6",
+          "@typescript-eslint/eslint-plugin": "5.29.0",
+          "@typescript-eslint/parser": "5.29.0",
+          "builtin-modules": "3.3.0",
+          "esbuild": "0.17.3",
+          "obsidian": "latest",
+          "tslib": "2.4.0",
+          "typescript": "4.7.4"
+        }
+      }
+    tsconfig.json: |               # TypeScript configuration
+      {
+        "compilerOptions": {
+          "baseUrl": ".",
+          "inlineSourceMap": true,
+          "inlineSources": true,
+          "module": "ESNext",
+          "target": "ES6",
+          "allowJs": true,
+          "noImplicitAny": true,
+          "moduleResolution": "node",
+          "importHelpers": true,
+          "isolatedModules": true,
+          "strictNullChecks": true,
+          "lib": [
+            "DOM",
+            "ES5",
+            "ES6",
+            "ES7"
+          ]
+        },
+        "include": [
+          "src/**/*.ts"
+        ]
+      }
+    manifest.json: |               # Obsidian plugin manifest
+      {
+        "id": "obsidian-index-plugin",
+        "name": "Obsidian Index Plugin",
+        "version": "1.0.0",
+        "minAppVersion": "0.15.0",
+        "description": "Automatically generates and updates index files for folders in Obsidian.",
+        "author": "Your Name",
+        "authorUrl": "https://yourwebsite.com",
+        "isDesktopOnly": false
+      }
+    .gitignore: |                  # Git ignore file
+      node_modules/
+      dist/
+      main.js
+      .obsidian/
+      .DS_Store
+    README.md: |                   # ReadMe file
+      # Obsidian Index Plugin
+
+      This plugin automatically generates and updates index files for folders in Obsidian.
+
+      ## Features
+      - Dynamically generates index files listing all files and folders.
+      - Excludes ignored patterns and customizable index file names.
+      - Integrated settings panel for easy configuration.
+
+      ## Development
+      - Run `npm install` to install dependencies.
+      - Use `npm run dev` to start development mode with live reloading.
+      - Use `npm run build` to compile the plugin for production.

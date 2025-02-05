@@ -1,0 +1,10 @@
+{
+  "id": "obsidian-index-plugin",
+  "name": "Obsidian Index Plugin",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "Automatically generates and updates index files for folders in Obsidian.",
+  "author": "Your Name",
+  "authorUrl": "https://yourwebsite.com",
+  "isDesktopOnly": false
+}
