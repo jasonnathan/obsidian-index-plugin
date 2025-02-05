@@ -1,8 +1,8 @@
-# **JJN-INFO: OBSIDIAN-INDEXCALYPES**  
+# JJN-INFO: OBSIDIAN-INDEXCALYPES  
 The end times, but for file organization.
 _(A.k.a. "How Did I Magically Generate tons of Index.md Files?")_  
 
-## **What Was I Thinking?**  
+## What Was I Thinking?  
 So apparently, at some point, I decided that manually organizing my Obsidian vault was **for peasants**. Instead, I must have thought:  
 
 > "You know what I need? A **plugin that auto-generates index files** in every folder, keeps them updated, and logs everything like a judgmental librarian."  
@@ -13,7 +13,7 @@ Now that I found the culprit, let’s document this **so I don’t freak out in 
 
 ---
 
-## **What This Thing Actually Does**  
+## What This Thing Actually Does  
 ✔ **Auto-generates an index file (`Index.md`) in every folder**.  
 ✔ **Updates said index when files are added, renamed, or deleted**.  
 ✔ **Excludes garbage files (e.g., `.syncthing`, `conflicted copy`)**.  
@@ -23,7 +23,7 @@ Now that I found the culprit, let’s document this **so I don’t freak out in 
 
 ---
 
-## **Where I Hid Everything (Folder Structure)**  
+## Where I Hid Everything (Folder Structure)  
 ```plaintext
 obsidian-index-plugin
 ├── src/                        # The actual code
@@ -41,7 +41,7 @@ obsidian-index-plugin
 
 ---
 
-## **Core Components (a.k.a. The Pieces of the Puzzle)**  
+## Core Components (a.k.a. The Pieces of the Puzzle)  
 
 ### 📌 **The Brain (`main.ts`)**
 - Loads the plugin into Obsidian and sets up event listeners.  
@@ -67,7 +67,7 @@ obsidian-index-plugin
 
 ---
 
-## **How It Works (Because I Will Forget)**  
+## How It Works (Because I Will Forget)  
 
 ### 🔹 **Step 1: Install It**  
 1. Clone the repo:  
@@ -98,7 +98,7 @@ obsidian-index-plugin
 
 ---
 
-## **Why This Is Cool (And Slightly Overkill)**  
+## Why This Is Cool (And Slightly Overkill)  
 ✅ **Auto-organizes my notes**—I never have to manually create index files again.  
 ✅ **Updates itself**—so my vault never becomes outdated.  
 ✅ **Handles renames & deletions**—so broken links don’t haunt me.  
@@ -107,7 +107,7 @@ obsidian-index-plugin
 
 ---
 
-## **Things That Could Be Better (Future Me, Fix This)**  
+## Things That Could Be Better (Future Me, Fix This)  
 🔴 **Settings are limited**—I should allow more customization (e.g., custom folder structures).  
 🔴 **No manual re-indexing option**—Right now, I need to restart Obsidian to force a full refresh.  
 🔴 **No multi-language support**—Who cares? I only need English.  
@@ -120,7 +120,7 @@ obsidian-index-plugin
 
 ---
 
-## **Notes to Future Me**  
+## Notes to Future Me  
 📌 **If `Index.md` files randomly appear, it’s because this is still running.**  
 📌 **To disable it, remove it from `~/.obsidian/plugins/`** (or turn it off in settings).  
 📌 **If indexing slows down, clear the logs and restart Obsidian.**  
@@ -128,7 +128,7 @@ obsidian-index-plugin
 
 ---
 
-## **Final Thoughts (Read This Before I Panic Again)**  
+## Final Thoughts (Read This Before I Panic Again)  
 This thing **works too well**.  
 It has been running **silently** for who-knows-how-long, **generating thousands of index files**—and I had **no idea**.  
 It is **both a blessing and a curse**.  
